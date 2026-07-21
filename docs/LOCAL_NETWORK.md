@@ -33,18 +33,24 @@ another device.
 
 ## Windows firewall
 
-If other devices cannot connect, open an elevated PowerShell window once and
-run:
+The current network should use the Windows `Private` profile. Check it with
+`Get-NetConnectionProfile`. If necessary, open an elevated PowerShell window
+and change the profile (replace the interface name when using Ethernet):
+
+```powershell
+Set-NetConnectionProfile -InterfaceAlias "Wi-Fi" -NetworkCategory Private
+```
+
+Then, in the same elevated window, add a rule limited to the local subnet:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Dzwonnica SDR (TCP 9002)" `
   -Direction Inbound -Action Allow -Protocol TCP -LocalPort 9002 `
-  -Profile Private
+  -Profile Private -RemoteAddress LocalSubnet
 ```
 
-Keep the active Windows network profile set to `Private`. Do not expose port
-9002 through the router unless public Internet access is deliberately secured
-with authentication and TLS.
+Do not expose port 9002 through the router unless public Internet access is
+deliberately secured with authentication and TLS.
 
 ## Verify
 
