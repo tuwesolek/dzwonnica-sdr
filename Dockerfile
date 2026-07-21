@@ -1,5 +1,5 @@
-# Multi-stage Dockerfile for NovaSDR
-# Builds frontend, Rust backend with SoapySDR and OpenCL support
+# Multi-stage Dockerfile for Dzwonnica SDR
+# Builds the frontend and Rust backend with SoapyPlutoSDR support.
 
 # Stage 1: Build the frontend
 FROM node:20-slim AS frontend-builder
@@ -35,6 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ocl-icd-opencl-dev \
     libclfft-dev \
     libusb-1.0-0-dev \
+    libiio-dev \
+    libad9361-dev \
+    libopus-dev \
     git \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -55,7 +58,7 @@ RUN git clone https://github.com/pothosware/SoapySDR.git /tmp/SoapySDR && \
     ldconfig && \
     rm -rf /tmp/SoapySDR
 
-# Build SoapyRTLSDR (RTL-SDR support)
+# Build SoapyRTLSDR (kept for compatibility with upstream receiver configs)
 RUN apt-get update && apt-get install -y --no-install-recommends rtl-sdr librtlsdr-dev && \
     git clone https://github.com/pothosware/SoapyRTLSDR.git /tmp/SoapyRTLSDR && \
     cd /tmp/SoapyRTLSDR && \
@@ -66,6 +69,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends rtl-sdr librtls
     rm -rf /tmp/SoapyRTLSDR && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Build the ADALM-Pluto module. The configured receiver connects to
+# driver=plutosdr,hostname=pluto.local over the Pluto USB Ethernet link.
+RUN git clone https://github.com/pothosware/SoapyPlutoSDR.git /tmp/SoapyPlutoSDR && \
+    cd /tmp/SoapyPlutoSDR && \
+    mkdir build && cd build && \
+    cmake .. && \
+    make -j$(nproc) && \
+    make install && \
+    ldconfig && \
+    rm -rf /tmp/SoapyPlutoSDR
 
 # Build the Rust backend with SoapySDR and clFFT support
 RUN cargo build --release --features "soapysdr,clfft" -p novasdr-server
@@ -81,7 +95,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libusb-1.0-0 \
     ocl-icd-libopencl1 \
     libclfft2 \
+    libiio0 \
+    libad9361-0 \
+    libopus0 \
     rtl-sdr \
+    curl \
     python3 \
     python3-numpy \
     ca-certificates \

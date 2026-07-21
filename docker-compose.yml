@@ -1,14 +1,19 @@
 services:
-  novasdr:
+  dzwonnica-sdr:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: novasdr-server
+    container_name: dzwonnica-sdr
     restart: unless-stopped
 
     # Port mappings
     ports:
       - "9002:9002"  # Web UI and WebSocket port
+
+    # PlutoSDR normally uses this address over its USB Ethernet interface.
+    # This also makes pluto.local work when Docker cannot forward host mDNS.
+    extra_hosts:
+      - "pluto.local:192.168.2.1"
     
     # Volume mappings for persistence and configuration
     volumes:
@@ -19,17 +24,8 @@ services:
       # Data persistence
       - ./data:/app/data
     
-    # Device access for SDR hardware
-    # Uncomment and modify based on your SDR device
-    devices:
-      # RTL-SDR devices
-      - /dev/bus/usb:/dev/bus/usb
-      # Alternative: specific device mapping
-      # - /dev/bus/usb/001/002:/dev/bus/usb/001/002
-    
-    # Privileged mode may be needed for USB device access
-    # Only use if necessary for your setup
-    privileged: false
+    # PlutoSDR is reached over its USB Ethernet interface, so no raw USB
+    # device mapping or privileged container access is required.
     
     # Environment variables
     environment:

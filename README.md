@@ -1,4 +1,4 @@
-# NovaSDR
+# Dzwonnica SDR
 
 <p>
   <img alt="License" src="https://img.shields.io/badge/license-GPL--3.0--only-blue">
@@ -8,7 +8,13 @@
   <img alt="Transport" src="https://img.shields.io/badge/transport-WebSocket-informational">
 </p>
 
-NovaSDR is a WebSDR server that streams **waterfall/spectrum** and **demodulated audio** to a browser UI.
+Dzwonnica SDR is a religiously inspired, gold-and-burgundy WebSDR built on NovaSDR. It streams **waterfall/spectrum** and **demodulated audio** from an ADALM-Pluto available at `pluto.local` to a browser UI.
+
+The project preserves its NovaSDR ancestry and GPL-3.0-only license. The customized frontend lives in the [`dzwonnica-sdr-frontend`](https://github.com/tuwesolek/dzwonnica-sdr-frontend) submodule.
+
+## Dzwonnica quick start
+
+The included configuration listens on port `9002`, uses `driver=plutosdr,hostname=pluto.local`, and starts at 100 MHz with a 2.4 MS/s IQ stream. See [`docs/PLUTO_LOCAL.md`](docs/PLUTO_LOCAL.md) for native and Docker startup instructions.
 
 - **Backend**: Rust (SoapySDR + OpenCL clFFT in the recommended build; CPU-only builds are supported)
 - **Codecs**: waterfall `zstd`, audio `flac`

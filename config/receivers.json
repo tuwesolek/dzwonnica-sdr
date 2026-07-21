@@ -1,3 +1,35 @@
 {
-  "receivers": []
+  "receivers": [
+    {
+      "id": "pluto-local",
+      "name": "PlutoSDR · pluto.local",
+      "input": {
+        "sps": 2400000,
+        "frequency": 100000000,
+        "signal": "iq",
+        "fft_size": 131072,
+        "brightness_offset": 0,
+        "audio_sps": 48000,
+        "waterfall_size": 1024,
+        "waterfall_compression": "zstd",
+        "audio_compression": "opus",
+        "accelerator": "none",
+        "driver": {
+          "kind": "soapysdr",
+          "device": "driver=plutosdr,hostname=pluto.local",
+          "channel": 0,
+          "format": "cs16",
+          "agc": false,
+          "gain": 40.0,
+          "rx_buffer_samples": 131072
+        },
+        "defaults": {
+          "frequency": 100000000,
+          "modulation": "FM",
+          "squelch_enabled": false,
+          "colormap": "viridis"
+        }
+      }
+    }
+  ]
 }

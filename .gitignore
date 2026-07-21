@@ -27,6 +27,8 @@ fftw_wisdom
 logs/
 legacy/
 overlays/
+.playwright-cli/
+output/playwright/
 !config/overlays/
 !config/overlays/**
 
