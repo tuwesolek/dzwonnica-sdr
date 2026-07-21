@@ -3,13 +3,14 @@ mod soapysdr;
 
 use novasdr_core::config::{InputDriver, ReceiverConfig};
 use std::io::Read;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicI64};
 use std::sync::{Arc, Mutex};
 
 pub fn open(
     receiver: &ReceiverConfig,
     stop_requested: Arc<AtomicBool>,
     soapy_semaphore: Arc<Mutex<()>>,
+    center_frequency_hz: Arc<AtomicI64>,
 ) -> anyhow::Result<(Box<dyn Read + Send>, &'static str)> {
     let driver_name = receiver.input.driver.as_str();
     match &receiver.input.driver {
@@ -28,14 +29,20 @@ pub fn open(
             #[cfg(feature = "soapysdr")]
             {
                 Ok((
-                    soapysdr::open(driver, &receiver.input, stop_requested, soapy_semaphore)?,
+                    soapysdr::open(
+                        driver,
+                        &receiver.input,
+                        stop_requested,
+                        soapy_semaphore,
+                        center_frequency_hz,
+                    )?,
                     driver_name,
                 ))
             }
 
             #[cfg(not(feature = "soapysdr"))]
             {
-                let _ = (driver, stop_requested, soapy_semaphore);
+                let _ = (driver, stop_requested, soapy_semaphore, center_frequency_hz);
                 anyhow::bail!(
                     "SoapySDR input support is disabled (rebuild with Cargo feature \"soapysdr\")"
                 )

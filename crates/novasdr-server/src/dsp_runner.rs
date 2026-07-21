@@ -99,8 +99,12 @@ fn run_dsp_loop(
     soapy_semaphore: Arc<Mutex<()>>,
 ) -> anyhow::Result<()> {
     let stop_requested = Arc::new(AtomicBool::new(false));
-    let (input, input_name) =
-        crate::input::open(&receiver.receiver, stop_requested.clone(), soapy_semaphore)?;
+    let (input, input_name) = crate::input::open(
+        &receiver.receiver,
+        stop_requested.clone(),
+        soapy_semaphore,
+        receiver.center_frequency_hz.clone(),
+    )?;
     let sample_format = receiver.receiver.input.driver.get_sample_format();
     tracing::info!(
         receiver_id = %receiver.receiver.id,
