@@ -227,19 +227,30 @@ impl<T: soapysdr::StreamSample + Copy + Default> SoapyRead<T> {
             }
             let requested_hz = self.center_frequency_hz.load(Ordering::Relaxed);
             if requested_hz != self.tuned_frequency_hz {
-                self.device
-                    .set_frequency(
-                        soapysdr::Direction::Rx,
-                        self.channel,
-                        requested_hz as f64,
-                        (),
+                self.stream.deactivate(None).map_err(|error| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("deactivate SoapySDR stream before retune: {error}"),
                     )
-                    .map_err(|error| {
-                        std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("SoapySDR retune to {requested_hz} Hz: {error}"),
-                        )
-                    })?;
+                })?;
+                if let Err(error) = self.device.set_frequency(
+                    soapysdr::Direction::Rx,
+                    self.channel,
+                    requested_hz as f64,
+                    (),
+                ) {
+                    let _ = self.stream.activate(None);
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("SoapySDR retune to {requested_hz} Hz: {error}"),
+                    ));
+                }
+                self.stream.activate(None).map_err(|error| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("reactivate SoapySDR stream after retune: {error}"),
+                    )
+                })?;
                 tracing::info!(
                     previous_hz = self.tuned_frequency_hz,
                     frequency_hz = requested_hz,
