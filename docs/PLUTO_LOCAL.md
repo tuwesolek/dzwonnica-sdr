@@ -10,13 +10,20 @@ Install SoapySDR and the SoapyPlutoSDR module, then run:
 SoapySDRUtil --probe="driver=plutosdr,hostname=pluto.local"
 ```
 
-If mDNS is unavailable, verify the default Pluto USB Ethernet address and use it temporarily:
+On this installation `pluto.local` currently resolves to `192.168.68.59`. Verify
+that address directly if mDNS is unavailable:
 
 ```bash
-SoapySDRUtil --probe="driver=plutosdr,hostname=192.168.2.1"
+SoapySDRUtil --probe="driver=plutosdr,hostname=192.168.68.59"
 ```
 
-The Docker Compose configuration maps `pluto.local` to `192.168.2.1` inside the container, so it does not depend on container-side mDNS.
+The Docker Compose configuration maps `pluto.local` to `192.168.68.59` inside
+the container, so it does not depend on container-side mDNS. If DHCP changes
+the Pluto address, provide the new value when starting the service:
+
+```bash
+PLUTO_IP=192.168.68.59 docker compose up -d --build
+```
 
 ## Native build and run
 
