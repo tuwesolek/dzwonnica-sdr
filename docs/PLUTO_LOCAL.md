@@ -27,7 +27,8 @@ cargo build -p novasdr-server --release --features soapysdr
 ./target/release/novasdr-server -c config/config.json -r config/receivers.json
 ```
 
-Open `http://localhost:9002`.
+Open `http://localhost:9002` locally or `http://HOST_LAN_IP:9002` from another
+device on the same network. See [`LOCAL_NETWORK.md`](LOCAL_NETWORK.md).
 
 ## Docker
 

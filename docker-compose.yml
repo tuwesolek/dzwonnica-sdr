@@ -8,7 +8,8 @@ services:
 
     # Port mappings
     ports:
-      - "9002:9002"  # Web UI and WebSocket port
+      # Publish the web UI and WebSockets on every host/LAN interface.
+      - "0.0.0.0:9002:9002"
 
     # PlutoSDR normally uses this address over its USB Ethernet interface.
     # This also makes pluto.local work when Docker cannot forward host mDNS.

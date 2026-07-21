@@ -186,7 +186,12 @@ Or edit `config/config.json` and `config/receivers.json` manually:
 ./target/release/novasdr-server -c config/config.json -r config/receivers.json
 ```
 
-Open: `http://localhost:9002`
+Open locally: `http://localhost:9002`.
+
+From another device on the same network, open `http://HOST_LAN_IP:9002`.
+The supplied configuration binds the server and Docker port to `0.0.0.0`, while
+the frontend derives its HTTP and WebSocket host from the browser address. See
+[`docs/LOCAL_NETWORK.md`](docs/LOCAL_NETWORK.md) for firewall and diagnostics.
 
 ## SoapySDR mode (feature-gated)
 
