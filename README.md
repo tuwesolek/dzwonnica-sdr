@@ -14,7 +14,7 @@ The project preserves its NovaSDR ancestry and GPL-3.0-only license. The customi
 
 ## Dzwonnica quick start
 
-The included configuration listens on port `9002`, uses `driver=plutosdr,hostname=pluto.local`, and starts at 100 MHz with a 2.4 MS/s IQ stream. See [`docs/PLUTO_LOCAL.md`](docs/PLUTO_LOCAL.md) for native and Docker startup instructions.
+The included configuration listens on port `9002`, uses `driver=plutosdr,hostname=pluto.local`, and starts in WBFM at 100.2 MHz with a 2.4 MS/s IQ stream. See [`docs/PLUTO_LOCAL.md`](docs/PLUTO_LOCAL.md) for native and Docker startup instructions.
 
 - **Backend**: Rust (SoapySDR + OpenCL clFFT in the recommended build; CPU-only builds are supported)
 - **Codecs**: waterfall `zstd`, audio `flac`

@@ -45,7 +45,9 @@ docker compose up -d
 docker compose logs -f dzwonnica-sdr
 ```
 
-The image builds SoapySDR and SoapyPlutoSDR from source and includes the required libiio/ad9361 runtime libraries.
+The image builds SoapySDR and SoapyPlutoSDR from source and includes the required
+libiio/ad9361 runtime libraries. The supplied receiver profile uses a 192 kS/s
+ADPCM audio path and starts in WBFM mode for broadcast FM reception.
 
 ## Adjusting the tuning range
 
