@@ -24,17 +24,8 @@ services:
       # Data persistence
       - ./data:/app/data
     
-    # Device access for SDR hardware
-    # Uncomment and modify based on your SDR device
-    devices:
-      # RTL-SDR devices
-      - /dev/bus/usb:/dev/bus/usb
-      # Alternative: specific device mapping
-      # - /dev/bus/usb/001/002:/dev/bus/usb/001/002
-    
-    # Privileged mode may be needed for USB device access
-    # Only use if necessary for your setup
-    privileged: false
+    # PlutoSDR is reached over its USB Ethernet interface, so no raw USB
+    # device mapping or privileged container access is required.
     
     # Environment variables
     environment:
