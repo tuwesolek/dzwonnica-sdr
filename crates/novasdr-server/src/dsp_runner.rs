@@ -52,22 +52,50 @@ pub fn start(state: Arc<AppState>) -> anyhow::Result<()> {
         let use_waterfall_thread = waterfall_threads_budget > 0;
         waterfall_threads_budget = waterfall_threads_budget.saturating_sub(1);
         let soapy_semaphore = soapy_semaphore.clone();
+        let retry_input = matches!(
+            rx.receiver.input.driver,
+            novasdr_core::config::InputDriver::SoapySdr(_)
+        );
         thread::Builder::new()
             .name(format!("novasdr-dsp-{rx_id}"))
             .spawn(move || {
                 tracing::info!(receiver_id = %rx_id, "DSP thread started");
-                if let Err(e) = run_dsp_loop(
-                    state,
-                    rx,
-                    use_reader_thread,
-                    use_waterfall_thread,
-                    soapy_semaphore,
-                ) {
-                    if crate::shutdown::is_shutdown_requested() || is_expected_input_termination(&e)
-                    {
-                        tracing::info!(receiver_id = %rx_id, error = ?e, "DSP loop terminated");
-                    } else {
-                        tracing::error!(receiver_id = %rx_id, error = ?e, "DSP loop terminated");
+                loop {
+                    let result = run_dsp_loop(
+                        state.clone(),
+                        rx.clone(),
+                        use_reader_thread,
+                        use_waterfall_thread,
+                        soapy_semaphore.clone(),
+                    );
+                    if crate::shutdown::is_shutdown_requested() {
+                        break;
+                    }
+                    match result {
+                        Ok(()) => break,
+                        Err(error) => {
+                            if is_expected_input_termination(&error) {
+                                tracing::warn!(
+                                    receiver_id = %rx_id,
+                                    error = ?error,
+                                    "DSP input disconnected"
+                                );
+                            } else {
+                                tracing::error!(
+                                    receiver_id = %rx_id,
+                                    error = ?error,
+                                    "DSP loop terminated"
+                                );
+                            }
+                            if !retry_input {
+                                break;
+                            }
+                            tracing::warn!(
+                                receiver_id = %rx_id,
+                                "reopening SoapySDR input in 2 seconds"
+                            );
+                            thread::sleep(Duration::from_secs(2));
+                        }
                     }
                 }
             })?;
