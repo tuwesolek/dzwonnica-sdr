@@ -33,6 +33,16 @@ another device.
 
 ## Windows firewall
 
+The repository includes a helper script. From an elevated PowerShell window,
+run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\enable-lan-access.ps1
+```
+
+The script applies the private-network profile and firewall settings described
+below.
+
 The current network should use the Windows `Private` profile. Check it with
 `Get-NetConnectionProfile`. If necessary, open an elevated PowerShell window
 and change the profile (replace the interface name when using Ethernet):
