@@ -1,19 +1,19 @@
 {
-  "enabled": false,
-  "title": "About this receiver",
-  "about": "Short operator-provided description.\nNewlines are preserved.",
+  "enabled": true,
+  "title": "Dzwonnica SDR · stacja Pluto",
+  "about": "Nasłuch radiowego eteru z odbiornika ADALM-Pluto.\nDźwięk, widmo i wodospad są transmitowane na żywo przez NovaSDR.",
 
   "donation_enabled": false,
-  "donation_url": "https://example.com/donate",
-  "donation_label": "Support this SDR",
+  "donation_url": "",
+  "donation_label": "Wesprzyj stację",
 
   "items": [
-    { "label": "Receiver", "value": "" },
-    { "label": "Antenna", "value": "" },
-    { "label": "Location", "value": "" }
+    { "label": "Odbiornik", "value": "ADALM-Pluto" },
+    { "label": "Adres urządzenia", "value": "pluto.local" },
+    { "label": "Próbkowanie", "value": "2,4 MS/s" }
   ],
 
-  "images": ["station-1.png", "station-2.png", "station-3.png"],
+  "images": [],
 
   "widgets": {
     "hamqsl": false,
