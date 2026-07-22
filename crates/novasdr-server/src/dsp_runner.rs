@@ -92,9 +92,9 @@ pub fn start(state: Arc<AppState>) -> anyhow::Result<()> {
                             }
                             tracing::warn!(
                                 receiver_id = %rx_id,
-                                "reopening SoapySDR input in 2 seconds"
+                                "reopening SoapySDR input in 500 ms"
                             );
-                            thread::sleep(Duration::from_secs(2));
+                            thread::sleep(Duration::from_millis(500));
                         }
                     }
                 }

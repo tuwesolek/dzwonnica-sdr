@@ -137,6 +137,7 @@ where
             .context("set SoapySDR RX antenna")?;
     }
 
+    let tuned_frequency_hz = center_frequency_hz.load(Ordering::Relaxed);
     device
         .set_sample_rate(soapysdr::Direction::Rx, driver.channel, input.sps as f64)
         .context("set SoapySDR sample rate")?;
@@ -144,7 +145,7 @@ where
         .set_frequency(
             soapysdr::Direction::Rx,
             driver.channel,
-            input.frequency as f64,
+            tuned_frequency_hz as f64,
             (),
         )
         .context("set SoapySDR frequency")?;
@@ -162,10 +163,8 @@ where
     // Use a reasonable internal buffer size (16K complex samples).
     // SoapySDR will fill what it can per read; we accumulate until the caller is satisfied.
     Ok(Box::new(SoapyRead::new(
-        device,
         stream,
-        driver.channel,
-        input.frequency,
+        tuned_frequency_hz,
         center_frequency_hz,
         driver.rx_buffer_samples,
         stop_requested,
@@ -176,12 +175,11 @@ where
 /// matching the behavior of stdin/pipe: blocks until data is available, never
 /// returns 0 (which would signal EOF to `read_exact`).
 struct SoapyRead<T: soapysdr::StreamSample> {
-    device: soapysdr::Device,
     stream: soapysdr::RxStream<T>,
-    channel: usize,
     tuned_frequency_hz: i64,
     center_frequency_hz: Arc<AtomicI64>,
     stop_requested: Arc<AtomicBool>,
+    opened_at: std::time::Instant,
     /// Internal sample buffer; we read from SoapySDR into this, then serve bytes to callers.
     buf: Vec<T>,
     /// Current read position in `buf`, measured in bytes.
@@ -192,21 +190,18 @@ struct SoapyRead<T: soapysdr::StreamSample> {
 
 impl<T: soapysdr::StreamSample + Copy + Default> SoapyRead<T> {
     fn new(
-        device: soapysdr::Device,
         stream: soapysdr::RxStream<T>,
-        channel: usize,
         tuned_frequency_hz: i64,
         center_frequency_hz: Arc<AtomicI64>,
         buf_samples: usize,
         stop_requested: Arc<AtomicBool>,
     ) -> Self {
         Self {
-            device,
             stream,
-            channel,
             tuned_frequency_hz,
             center_frequency_hz,
             stop_requested,
+            opened_at: std::time::Instant::now(),
             buf: vec![T::default(); buf_samples.max(1024)],
             read_pos: 0,
             data_len: 0,
@@ -225,40 +220,27 @@ impl<T: soapysdr::StreamSample + Copy + Default> SoapyRead<T> {
             {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "shutdown"));
             }
+            if self.opened_at.elapsed() >= std::time::Duration::from_secs(60) {
+                tracing::info!(
+                    frequency_hz = self.tuned_frequency_hz,
+                    "refreshing SoapySDR network session"
+                );
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "scheduled SoapySDR session refresh",
+                ));
+            }
             let requested_hz = self.center_frequency_hz.load(Ordering::Relaxed);
             if requested_hz != self.tuned_frequency_hz {
-                self.stream.deactivate(None).map_err(|error| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("deactivate SoapySDR stream before retune: {error}"),
-                    )
-                })?;
-                if let Err(error) = self.device.set_frequency(
-                    soapysdr::Direction::Rx,
-                    self.channel,
-                    requested_hz as f64,
-                    (),
-                ) {
-                    let _ = self.stream.activate(None);
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("SoapySDR retune to {requested_hz} Hz: {error}"),
-                    ));
-                }
-                self.stream.activate(None).map_err(|error| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("reactivate SoapySDR stream after retune: {error}"),
-                    )
-                })?;
                 tracing::info!(
                     previous_hz = self.tuned_frequency_hz,
                     frequency_hz = requested_hz,
-                    "SoapySDR receiver retuned"
+                    "reopening SoapySDR receiver for retune"
                 );
-                self.tuned_frequency_hz = requested_hz;
-                self.read_pos = 0;
-                self.data_len = 0;
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "SoapySDR retune requested",
+                ));
             }
             let mut bufs = [self.buf.as_mut_slice()];
             // Long timeout (1 second) to avoid busy-spinning; SoapySDR returns early when data arrives.

@@ -4,7 +4,7 @@
       "id": "pluto-local",
       "name": "PlutoSDR · pluto.local",
       "input": {
-        "sps": 2400000,
+        "sps": 600000,
         "frequency": 100000000,
         "signal": "iq",
         "fft_size": 131072,
@@ -21,7 +21,7 @@
           "format": "cs16",
           "agc": false,
           "gain": 40.0,
-          "rx_buffer_samples": 131072
+          "rx_buffer_samples": 32768
         },
         "defaults": {
           "frequency": 100200000,
