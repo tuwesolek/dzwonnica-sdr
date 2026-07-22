@@ -871,7 +871,7 @@ impl AudioPipeline {
                     ((sample_rate as f64) * target_packet_sec).ceil().max(1.0) as usize;
                 let mut packet_samples = frame_samples.max(min_packet);
                 packet_samples = packet_samples.div_ceil(8) * 8;
-                packet_samples.clamp(frame_samples, 8192)
+                packet_samples.clamp(frame_samples, frame_samples.max(8192))
             }
             AudioCompression::Opus => {
                 // number of milliseconds per chunk. opus allowed values: 5, 10, 20, 40, 60.

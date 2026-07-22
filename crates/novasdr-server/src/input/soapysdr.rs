@@ -2,7 +2,7 @@ use anyhow::Context;
 use novasdr_core::config::{ReceiverInput, SampleFormat, SignalType, SoapySdrDriver};
 use soapysdr::StreamSample;
 use std::io::Read;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
 fn to_stream_args(driver: &SoapySdrDriver) -> anyhow::Result<soapysdr::Args> {
@@ -26,6 +26,7 @@ pub fn open(
     input: &ReceiverInput,
     stop_requested: Arc<AtomicBool>,
     soapy_semaphore: Arc<Mutex<()>>,
+    center_frequency_hz: Arc<AtomicI64>,
 ) -> anyhow::Result<Box<dyn Read + Send>> {
     anyhow::ensure!(
         input.signal == SignalType::Iq,
@@ -38,8 +39,18 @@ pub fn open(
     let _guard = soapy_semaphore.lock();
 
     match driver.format {
-        SampleFormat::Cs16 => open_fmt::<num_complex::Complex<i16>>(driver, input, stop_requested),
-        SampleFormat::Cf32 => open_fmt::<num_complex::Complex<f32>>(driver, input, stop_requested),
+        SampleFormat::Cs16 => open_fmt::<num_complex::Complex<i16>>(
+            driver,
+            input,
+            stop_requested,
+            center_frequency_hz,
+        ),
+        SampleFormat::Cf32 => open_fmt::<num_complex::Complex<f32>>(
+            driver,
+            input,
+            stop_requested,
+            center_frequency_hz,
+        ),
         other => anyhow::bail!(
             "soapysdr input only supports format \"cs16\" or \"cf32\" (got {other:?})"
         ),
@@ -113,6 +124,7 @@ fn open_fmt<E>(
     driver: &SoapySdrDriver,
     input: &ReceiverInput,
     stop_requested: Arc<AtomicBool>,
+    center_frequency_hz: Arc<AtomicI64>,
 ) -> anyhow::Result<Box<dyn Read + Send>>
 where
     E: StreamSample + Copy + Default + Send + 'static,
@@ -125,6 +137,7 @@ where
             .context("set SoapySDR RX antenna")?;
     }
 
+    let tuned_frequency_hz = center_frequency_hz.load(Ordering::Relaxed);
     device
         .set_sample_rate(soapysdr::Direction::Rx, driver.channel, input.sps as f64)
         .context("set SoapySDR sample rate")?;
@@ -132,7 +145,7 @@ where
         .set_frequency(
             soapysdr::Direction::Rx,
             driver.channel,
-            input.frequency as f64,
+            tuned_frequency_hz as f64,
             (),
         )
         .context("set SoapySDR frequency")?;
@@ -151,6 +164,8 @@ where
     // SoapySDR will fill what it can per read; we accumulate until the caller is satisfied.
     Ok(Box::new(SoapyRead::new(
         stream,
+        tuned_frequency_hz,
+        center_frequency_hz,
         driver.rx_buffer_samples,
         stop_requested,
     )))
@@ -161,7 +176,10 @@ where
 /// returns 0 (which would signal EOF to `read_exact`).
 struct SoapyRead<T: soapysdr::StreamSample> {
     stream: soapysdr::RxStream<T>,
+    tuned_frequency_hz: i64,
+    center_frequency_hz: Arc<AtomicI64>,
     stop_requested: Arc<AtomicBool>,
+    opened_at: std::time::Instant,
     /// Internal sample buffer; we read from SoapySDR into this, then serve bytes to callers.
     buf: Vec<T>,
     /// Current read position in `buf`, measured in bytes.
@@ -173,12 +191,17 @@ struct SoapyRead<T: soapysdr::StreamSample> {
 impl<T: soapysdr::StreamSample + Copy + Default> SoapyRead<T> {
     fn new(
         stream: soapysdr::RxStream<T>,
+        tuned_frequency_hz: i64,
+        center_frequency_hz: Arc<AtomicI64>,
         buf_samples: usize,
         stop_requested: Arc<AtomicBool>,
     ) -> Self {
         Self {
             stream,
+            tuned_frequency_hz,
+            center_frequency_hz,
             stop_requested,
+            opened_at: std::time::Instant::now(),
             buf: vec![T::default(); buf_samples.max(1024)],
             read_pos: 0,
             data_len: 0,
@@ -196,6 +219,28 @@ impl<T: soapysdr::StreamSample + Copy + Default> SoapyRead<T> {
                 || crate::shutdown::is_shutdown_requested()
             {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "shutdown"));
+            }
+            if self.opened_at.elapsed() >= std::time::Duration::from_secs(60) {
+                tracing::info!(
+                    frequency_hz = self.tuned_frequency_hz,
+                    "refreshing SoapySDR network session"
+                );
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "scheduled SoapySDR session refresh",
+                ));
+            }
+            let requested_hz = self.center_frequency_hz.load(Ordering::Relaxed);
+            if requested_hz != self.tuned_frequency_hz {
+                tracing::info!(
+                    previous_hz = self.tuned_frequency_hz,
+                    frequency_hz = requested_hz,
+                    "reopening SoapySDR receiver for retune"
+                );
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "SoapySDR retune requested",
+                ));
             }
             let mut bufs = [self.buf.as_mut_slice()];
             // Long timeout (1 second) to avoid busy-spinning; SoapySDR returns early when data arrives.

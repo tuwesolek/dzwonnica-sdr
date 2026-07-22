@@ -10,13 +10,20 @@ Install SoapySDR and the SoapyPlutoSDR module, then run:
 SoapySDRUtil --probe="driver=plutosdr,hostname=pluto.local"
 ```
 
-If mDNS is unavailable, verify the default Pluto USB Ethernet address and use it temporarily:
+On this installation `pluto.local` currently resolves to `192.168.68.59`. Verify
+that address directly if mDNS is unavailable:
 
 ```bash
-SoapySDRUtil --probe="driver=plutosdr,hostname=192.168.2.1"
+SoapySDRUtil --probe="driver=plutosdr,hostname=192.168.68.59"
 ```
 
-The Docker Compose configuration maps `pluto.local` to `192.168.2.1` inside the container, so it does not depend on container-side mDNS.
+The Docker Compose configuration maps `pluto.local` to `192.168.68.59` inside
+the container, so it does not depend on container-side mDNS. If DHCP changes
+the Pluto address, provide the new value when starting the service:
+
+```bash
+PLUTO_IP=192.168.68.59 docker compose up -d --build
+```
 
 ## Native build and run
 
@@ -27,7 +34,8 @@ cargo build -p novasdr-server --release --features soapysdr
 ./target/release/novasdr-server -c config/config.json -r config/receivers.json
 ```
 
-Open `http://localhost:9002`.
+Open `http://localhost:9002` locally or `http://HOST_LAN_IP:9002` from another
+device on the same network. See [`LOCAL_NETWORK.md`](LOCAL_NETWORK.md).
 
 ## Docker
 
@@ -37,7 +45,9 @@ docker compose up -d
 docker compose logs -f dzwonnica-sdr
 ```
 
-The image builds SoapySDR and SoapyPlutoSDR from source and includes the required libiio/ad9361 runtime libraries.
+The image builds SoapySDR and SoapyPlutoSDR from source and includes the required
+libiio/ad9361 runtime libraries. The supplied receiver profile uses a 192 kS/s
+ADPCM audio path and starts in WBFM mode for broadcast FM reception.
 
 ## Adjusting the tuning range
 

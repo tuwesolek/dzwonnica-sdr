@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context};
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use dashmap::DashMap;
 use novasdr_core::{
     config,
@@ -11,7 +11,7 @@ use std::{
     net::IpAddr,
     path::Path,
     sync::{
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering},
         Arc,
     },
 };
@@ -84,6 +84,9 @@ pub struct ReceiverState {
     pub audio_clients: DashMap<ClientId, Arc<AudioClient>>,
     pub waterfall_clients: Vec<DashMap<ClientId, Arc<WaterfallClient>>>,
     pub signal_changes: DashMap<String, (i32, f64, i32)>,
+    /// Requested hardware center frequency. The SoapySDR reader applies changes
+    /// on its own thread so HTTP/WebSocket tasks never touch the device directly.
+    pub center_frequency_hz: Arc<AtomicI64>,
 }
 
 impl ReceiverState {
@@ -93,12 +96,23 @@ impl ReceiverState {
             waterfall_clients.push(DashMap::new());
         }
 
+        let center_frequency_hz = Arc::new(AtomicI64::new(receiver.input.frequency));
         Self {
             receiver,
             rt,
             audio_clients: DashMap::new(),
             waterfall_clients,
             signal_changes: DashMap::new(),
+            center_frequency_hz,
+        }
+    }
+
+    pub fn current_basefreq(&self) -> i64 {
+        let center_hz = self.center_frequency_hz.load(Ordering::Relaxed);
+        if self.rt.is_real {
+            center_hz
+        } else {
+            center_hz.saturating_sub(self.rt.total_bandwidth / 2)
         }
     }
 }
@@ -243,12 +257,32 @@ impl AppState {
             .unwrap_or(2800)
             .max(ssb_lowcut_hz.saturating_add(1));
 
+        let center_hz = receiver.center_frequency_hz.load(Ordering::Relaxed);
+        let basefreq = receiver.current_basefreq();
+        let was_retuned = center_hz != receiver.receiver.input.frequency;
+        let center_bin = (receiver.rt.fft_result_size as f64) / 2.0;
+        let default_m = if was_retuned {
+            center_bin
+        } else {
+            receiver.rt.default_m
+        };
+        let default_l = if was_retuned {
+            (default_m - (receiver.rt.default_m - receiver.rt.default_l as f64)).round() as i32
+        } else {
+            receiver.rt.default_l
+        };
+        let default_r = if was_retuned {
+            (default_m + (receiver.rt.default_r as f64 - receiver.rt.default_m)).round() as i32
+        } else {
+            receiver.rt.default_r
+        };
+
         let defaults = json!({
-            "frequency": receiver.rt.default_frequency,
+            "frequency": if was_retuned { center_hz } else { receiver.rt.default_frequency },
             "modulation": receiver.rt.default_mode_str,
-            "l": receiver.rt.default_l,
-            "m": receiver.rt.default_m,
-            "r": receiver.rt.default_r,
+            "l": default_l,
+            "m": default_m,
+            "r": default_r,
             "ssb_lowcut_hz": ssb_lowcut_hz,
             "ssb_highcut_hz": ssb_highcut_hz,
             "squelch_enabled": receiver.receiver.input.defaults.squelch_enabled,
@@ -264,7 +298,7 @@ impl AppState {
             "fft_size": receiver.rt.fft_size,
             "fft_result_size": receiver.rt.fft_result_size,
             "waterfall_size": receiver.rt.min_waterfall_fft,
-            "basefreq": receiver.rt.basefreq,
+            "basefreq": basefreq,
             "total_bandwidth": receiver.rt.total_bandwidth,
             "overlap": receiver.rt.fft_size / 2,
             "fft_overlap": receiver.rt.fft_size / 2,
@@ -558,8 +592,8 @@ pub async fn receivers_info(State(state): State<Arc<AppState>>) -> impl IntoResp
         .map(|r| {
             let rt = state
                 .receiver_state(r.id.as_str())
-                .map(|rx| rx.rt.as_ref())
-                .map(|rt| (rt.basefreq, rt.basefreq + rt.total_bandwidth));
+                .map(|rx| (rx.current_basefreq(), rx.rt.total_bandwidth))
+                .map(|(basefreq, total_bandwidth)| (basefreq, basefreq + total_bandwidth));
             json!({
                 "id": r.id,
                 "name": r.name,
@@ -573,6 +607,62 @@ pub async fn receivers_info(State(state): State<Arc<AppState>>) -> impl IntoResp
         "active_receiver_id": cfg.active_receiver_id,
         "receivers": receivers,
     }))
+}
+
+#[derive(Debug, serde::Deserialize)]
+pub struct RetuneReceiverRequest {
+    pub receiver_id: String,
+    pub frequency_hz: i64,
+}
+
+/// Retune a SoapySDR receiver. Dzwonnica's Pluto profile intentionally exposes
+/// the extended AD936x tuning range used by the configured device.
+pub async fn retune_receiver(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<RetuneReceiverRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    const PLUTO_MIN_HZ: i64 = 70_000_000;
+    const PLUTO_MAX_HZ: i64 = 6_000_000_000;
+
+    let receiver_id = request.receiver_id.trim();
+    let Some(receiver) = state.receiver_state(receiver_id) else {
+        return Err((StatusCode::NOT_FOUND, Json(json!({ "error": "receiver not found" }))));
+    };
+    if !matches!(
+        receiver.receiver.input.driver,
+        config::InputDriver::SoapySdr(_)
+    ) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "receiver is not tunable" })),
+        ));
+    }
+    if !(PLUTO_MIN_HZ..=PLUTO_MAX_HZ).contains(&request.frequency_hz) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "frequency is outside the configured PlutoSDR range",
+                "min_hz": PLUTO_MIN_HZ,
+                "max_hz": PLUTO_MAX_HZ,
+            })),
+        ));
+    }
+
+    receiver
+        .center_frequency_hz
+        .store(request.frequency_hz, Ordering::Relaxed);
+    tracing::info!(
+        receiver_id,
+        frequency_hz = request.frequency_hz,
+        "SoapySDR retune requested"
+    );
+
+    Ok(Json(json!({
+        "receiver_id": receiver_id,
+        "frequency_hz": request.frequency_hz,
+        "basefreq": receiver.current_basefreq(),
+        "total_bandwidth": receiver.rt.total_bandwidth,
+    })))
 }
 
 async fn maybe_load_json(path: &Path) -> Option<serde_json::Value> {

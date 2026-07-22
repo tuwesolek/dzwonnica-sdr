@@ -1,6 +1,9 @@
 use crate::{shutdown, state, ws};
 use anyhow::Context;
-use axum::{routing::get, Router};
+use axum::{
+    routing::{get, post},
+    Router,
+};
 use std::{net::SocketAddr, sync::Arc};
 use tower_http::{compression::CompressionLayer, services::ServeDir};
 
@@ -10,6 +13,7 @@ pub fn router(state: Arc<state::AppState>) -> Router {
     Router::new()
         .route("/server-info.json", get(state::server_info))
         .route("/receivers.json", get(state::receivers_info))
+        .route("/api/receiver/retune", post(state::retune_receiver))
         .route("/audio", get(ws::audio::upgrade))
         .route("/waterfall", get(ws::waterfall::upgrade))
         .route("/events", get(ws::events::upgrade))
